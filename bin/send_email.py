@@ -224,9 +224,9 @@ def send_email(view_id: str, submission_id: str, email_with_score: str):
 
     # Create the subject and body of the e-mail message, depending on submission status
     subject = (
-        f"Submission to {eval_name} Success: {submission_id}"
+        f"Submission to '{eval_name}' Success: {submission_id}"
         if submission_annotations.status == "VALIDATED"
-        else f"Submission to {eval_name} Failed: {submission_id}"
+        else f"Submission to '{eval_name}' Failed: {submission_id}"
     )
     body = email_template(
         submission_annotations.status,
