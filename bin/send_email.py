@@ -37,19 +37,19 @@ def get_participant_id(syn: synapseclient.Synapse, submission_id: str) -> List[s
 
 
 def get_score_dict(score):
-        strs = [""]
-        for key in score.keys():
-            str = f"{key} : {score[key][0]}"+"\n"
-            strs.append(str)
+    strings = [""]
+    for key in score.keys():
+        string = f"{key} : {score[key][0]}" + "\n"
+        strings.append(string)
 
-        return strs
+    return strings
 
 
 def email_template(
     status: str,
     email_with_score: bool,
     submission_id: str,
-    view_id: str,
+    target_link: str,
     score: int,
     reason: str,
 ) -> str:
@@ -61,7 +61,7 @@ def email_template(
       status: The submission status
       email_with_score: "no" if e-mail should not include score value / link to submissions views. Otherwise "yes".
       submission_id: The submission ID of the given submission on Synapse
-      view_id: The submission view ID on Synapse
+      target_link: The redirection link to display participants' own submissions
       score: The score value of the submission
       reason: The reason for the validation error, if present.
 
@@ -73,8 +73,9 @@ def email_template(
         (
             "VALIDATED",
             "yes",
-        ):
-        f"Submission {submission_id} has been evaluated with the following scores:\n" + "\n".join(get_score_dict(score)) + f"\nView all your scores here: https://www.synapse.org/#!Synapse:{view_id}/tables/",
+        ): f"Submission {submission_id} has been evaluated with the following scores:\n"
+        + get_score_dict(score)
+        + f"\nView all your submissions here: {target_link}.",
         (
             "VALIDATED",
             "no",
@@ -86,7 +87,9 @@ def email_template(
         + "\n"
         + f"Reason: '{reason}'."
         + "\n"
-        + f"View your submissions here: https://www.synapse.org/#!Synapse:{view_id}/tables/, and contact the organizers for more information.",
+        + f"View your submissions here: {target_link}."
+        + "\n"
+        + "Please contact the organizers for more information.",
         (
             "INVALID",
             "no",
@@ -125,7 +128,6 @@ def get_annotations(syn: synapseclient.Synapse, submission_id: str) -> NamedTupl
         "submissionAnnotations"
     ]
     submission_status = submission_annotations.get("validation_status")[0]
-    submission_scores = submission_annotations.get("auc")[0]
     error_reason = submission_annotations.get("validation_errors")[0]
 
     # TODO: A more elegant way to only get the score annotations?
@@ -136,13 +138,63 @@ def get_annotations(syn: synapseclient.Synapse, submission_id: str) -> NamedTupl
         "validation_status",
     ]
     submission_scores = {
-        key:submission_annotations.get(key)
+        key: submission_annotations.get(key)
         for key in submission_annotations.keys()
         if key not in non_score_annotations
     }
     return SubmissionAnnotations(
         status=submission_status, score=submission_scores, reason=error_reason
     )
+
+
+def get_evaluation(syn: synapseclient.Synapse, submission_id: str) -> tuple[str, str]:
+    """Get evaluation id for the submission
+
+    Arguments:
+        syn: Synapse connection
+        submission_id: The id of submission
+
+    Returns:
+        eval: the tuple of evaluation ID and evaluation name, or None if an error occurs.
+
+    Raises:
+        Exception: if an error occurs
+    """
+    try:
+        eval_id = syn.getSubmission(
+            submission_id, downloadFile=False).get("evaluationId")
+        eval_name = syn.getEvaluation(eval_id).get("name")
+        return eval_id, eval_name
+    except Exception as e:
+        print(
+            f"An error occurred while retrieving the evaluation for submission {submission_id}: {e}"
+        )
+
+
+def get_target_link(synapse_client: synapseclient.Synapse, eval_id: str) -> str:
+    """
+    Retrieves the redirection link returned in the email to view submissions for a given submission evaluation ID.
+
+    Arguments:
+        syn: Synapse connection
+        eval_id (str): the evaluation id of submission.
+
+    Returns:
+        link: The redirection link to the submission page.
+    """
+
+    EVAL_TO_LINK = {
+        "9615379": "https://www.synapse.org/#!Synapse:syn52052735/wiki/626195",
+        "9615532": "https://www.synapse.org/#!Synapse:syn52052735/wiki/626203",
+        "9615534": "https://www.synapse.org/#!Synapse:syn52052735/wiki/626211",
+        "9615535": "https://www.synapse.org/#!Synapse:syn52052735/wiki/626216"
+    }
+
+    if eval_id in EVAL_TO_LINK:
+        return EVAL_TO_LINK[eval_id]
+    else:
+        project_id = synapse_client.getEvaluation(eval_id).get("contentSource")
+        return f"https://www.synapse.org/#!Synapse:{project_id}"
 
 
 def send_email(view_id: str, submission_id: str, email_with_score: str):
@@ -164,23 +216,30 @@ def send_email(view_id: str, submission_id: str, email_with_score: str):
     # Get the Synapse users to send an e-mail to
     ids_to_notify = get_participant_id(syn, submission_id)
 
+    # Get the evaluation's Id and name for the given submission
+    eval_id, eval_name = get_evaluation(syn, submission_id)
+
+    # Get the redirection link to view submission page
+    target_link = get_target_link(syn, eval_id)
+
     # Create the subject and body of the e-mail message, depending on submission status
     subject = (
-        f"Evaluation Success: {submission_id}"
+        f"Submission to {eval_name} Success: {submission_id}"
         if submission_annotations.status == "VALIDATED"
-        else f"Evaluation Failed: {submission_id}"
+        else f"Submission to {eval_name} Failed: {submission_id}"
     )
     body = email_template(
         submission_annotations.status,
         email_with_score,
         submission_id,
-        view_id,
+        target_link,
         submission_annotations.score,
         submission_annotations.reason,
     )
 
     # Sends an e-mail notifying participant(s) that the evaluation succeeded or failed
-    syn.sendMessage(userIds=ids_to_notify, messageSubject=subject, messageBody=body)
+    syn.sendMessage(userIds=ids_to_notify,
+                    messageSubject=subject, messageBody=body)
 
 
 if __name__ == "__main__":
