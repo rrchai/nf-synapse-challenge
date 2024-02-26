@@ -37,12 +37,12 @@ def get_participant_id(syn: synapseclient.Synapse, submission_id: str) -> List[s
 
 
 def get_score_dict(score):
-    strings = [""]
-    for key in score.keys():
-        string = f"{key} : {score[key][0]}" + "\n"
-        strings.append(string)
+        strs = [""]
+        for key in score.keys():
+            str = f"{key} : {score[key][0]}"+"\n"
+            strs.append(str)
 
-    return strings
+        return strs
 
 
 def email_template(
@@ -73,9 +73,8 @@ def email_template(
         (
             "VALIDATED",
             "yes",
-        ): f"Submission {submission_id} has been evaluated with the following scores:\n"
-        + "\n".join(get_score_dict(score))
-        + f"\nView all your scores here: https://www.synapse.org/#!Synapse:{view_id}/tables/",
+        ):
+        f"Submission {submission_id} has been evaluated with the following scores:\n" + "\n".join(get_score_dict(score)) + f"\nView all your scores here: https://www.synapse.org/#!Synapse:{view_id}/tables/",
         (
             "VALIDATED",
             "no",
@@ -126,6 +125,7 @@ def get_annotations(syn: synapseclient.Synapse, submission_id: str) -> NamedTupl
         "submissionAnnotations"
     ]
     submission_status = submission_annotations.get("validation_status")[0]
+    submission_scores = submission_annotations.get("auc")[0]
     error_reason = submission_annotations.get("validation_errors")[0]
 
     # TODO: A more elegant way to only get the score annotations?
@@ -136,7 +136,7 @@ def get_annotations(syn: synapseclient.Synapse, submission_id: str) -> NamedTupl
         "validation_status",
     ]
     submission_scores = {
-        key: submission_annotations.get(key)
+        key:submission_annotations.get(key)
         for key in submission_annotations.keys()
         if key not in non_score_annotations
     }
